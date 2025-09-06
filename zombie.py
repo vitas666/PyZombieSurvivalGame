@@ -41,7 +41,7 @@ class Zombie:
     
     def update(self, player_x, player_y, obstacles, other_zombies=None):
         """
-        Update zombie AI and movement.
+        Update zombie AI and movement with improved pathfinding.
         
         Args:
             player_x (float): Player x position
@@ -49,89 +49,137 @@ class Zombie:
             obstacles (list): List of obstacle rectangles
             other_zombies (list): List of other zombies for collision avoidance
         """
-        # Detect if zombie is stuck
-        movement_distance = math.sqrt((self.x - self.last_x)**2 + (self.y - self.last_y)**2)
+        # Store previous position for stuck detection
+        prev_x, prev_y = self.x, self.y
         
-        if movement_distance < 0.5:
-            self.stuck_counter += 1
-        else:
-            self.stuck_counter = 0
-        
-        self.last_x = self.x
-        self.last_y = self.y
-        
-        # Calculate angle to player
+        # Calculate angle and distance to player
         self.angle_to_player = math.atan2(player_y - self.y, player_x - self.x)
+        distance_to_player = math.sqrt((player_x - self.x)**2 + (player_y - self.y)**2)
         
-        # Determine movement angle
-        if self.avoidance_timer > 0:
-            # Continue avoidance movement
-            self.avoidance_timer -= 1
-            movement_angle = self.avoidance_angle
-        elif self.stuck_counter > ZOMBIE_STUCK_THRESHOLD:
-            # Enter avoidance mode when stuck
-            self.avoidance_angle = self.angle_to_player + random.uniform(-1.5, 1.5)
-            self.avoidance_timer = ZOMBIE_AVOIDANCE_DURATION
-            self.stuck_counter = 0
-            movement_angle = self.avoidance_angle
-        else:
-            # Normal movement towards player
-            movement_angle = self.angle_to_player
+        # Determine movement strategy
+        movement_angle = self._determine_movement_angle(distance_to_player)
         
-        # Calculate movement
-        dx = math.cos(movement_angle) * self.speed
-        dy = math.sin(movement_angle) * self.speed
+        # Try direct movement first
+        if self._try_direct_movement(movement_angle, obstacles, other_zombies):
+            self._update_stuck_detection(prev_x, prev_y, success=True)
+            return
         
-        new_x = self.x + dx
-        new_y = self.y + dy
+        # If direct movement failed, try alternative movement strategies
+        if self._try_axis_aligned_movement(movement_angle, obstacles, other_zombies):
+            self._update_stuck_detection(prev_x, prev_y, success=True)
+            return
         
-        # Try movement with collision detection
-        if not self._check_collision(new_x, new_y, obstacles, other_zombies):
-            self.x = new_x
-            self.y = new_y
-        else:
-            self._handle_collision(movement_angle, obstacles, other_zombies)
+        # Try wall sliding movement
+        if self._try_wall_sliding(movement_angle, obstacles, other_zombies):
+            self._update_stuck_detection(prev_x, prev_y, success=True)
+            return
+        
+        # If all movement fails, try random movement to unstuck
+        self._try_unstuck_movement(obstacles, other_zombies)
+        self._update_stuck_detection(prev_x, prev_y, success=False)
     
-    def _handle_collision(self, movement_angle, obstacles, other_zombies):
+    def _determine_movement_angle(self, distance_to_player):
         """
-        Handle collision by trying alternative movement patterns.
+        Determine the angle to move based on current state and distance to player.
         
         Args:
-            movement_angle (float): Original movement angle
-            obstacles (list): List of obstacle rectangles
-            other_zombies (list): List of other zombies
+            distance_to_player (float): Distance to the player
+            
+        Returns:
+            float: Movement angle in radians
         """
-        moved = False
+        # Reduce avoidance timer
+        if self.avoidance_timer > 0:
+            self.avoidance_timer -= 1
         
-        # Try axis-aligned movement
-        dx = math.cos(movement_angle) * self.speed
-        dy = math.sin(movement_angle) * self.speed
+        # If in avoidance mode, continue with avoidance angle
+        if self.avoidance_timer > 0:
+            return self.avoidance_angle
         
+        # If stuck for too long, enter avoidance mode
+        if self.stuck_counter > ZOMBIE_STUCK_THRESHOLD:
+            self.avoidance_angle = self.angle_to_player + random.uniform(-math.pi/2, math.pi/2)
+            self.avoidance_timer = ZOMBIE_AVOIDANCE_DURATION
+            self.stuck_counter = max(0, self.stuck_counter - 10)  # Reduce stuck counter
+            return self.avoidance_angle
+        
+        # Normal movement towards player
+        return self.angle_to_player
+    
+    def _try_direct_movement(self, angle, obstacles, other_zombies):
+        """Try moving directly in the desired direction."""
+        dx = math.cos(angle) * self.speed
+        dy = math.sin(angle) * self.speed
+        new_x, new_y = self.x + dx, self.y + dy
+        
+        if not self._check_collision(new_x, new_y, obstacles, other_zombies):
+            self.x, self.y = new_x, new_y
+            return True
+        return False
+    
+    def _try_axis_aligned_movement(self, angle, obstacles, other_zombies):
+        """Try moving along X or Y axis separately."""
+        dx = math.cos(angle) * self.speed
+        dy = math.sin(angle) * self.speed
+        
+        # Try X-axis movement first
         if not self._check_collision(self.x + dx, self.y, obstacles, other_zombies):
             self.x += dx
-            moved = True
-        elif not self._check_collision(self.x, self.y + dy, obstacles, other_zombies):
-            self.y += dy
-            moved = True
+            return True
         
-        # If still blocked, try wall sliding
-        if not moved:
-            wall_slide_angles = [
-                movement_angle + 0.5, movement_angle - 0.5, 
-                movement_angle + 1.0, movement_angle - 1.0,
-                movement_angle + 1.5, movement_angle - 1.5
-            ]
+        # Try Y-axis movement
+        if not self._check_collision(self.x, self.y + dy, obstacles, other_zombies):
+            self.y += dy
+            return True
+        
+        return False
+    
+    def _try_wall_sliding(self, angle, obstacles, other_zombies):
+        """Try sliding along walls by testing multiple angles."""
+        slide_angles = [
+            angle + 0.3, angle - 0.3,
+            angle + 0.6, angle - 0.6,
+            angle + 0.9, angle - 0.9,
+            angle + math.pi/2, angle - math.pi/2
+        ]
+        
+        for slide_angle in slide_angles:
+            dx = math.cos(slide_angle) * self.speed * 0.8
+            dy = math.sin(slide_angle) * self.speed * 0.8
+            new_x, new_y = self.x + dx, self.y + dy
             
-            for slide_angle in wall_slide_angles:
-                slide_dx = math.cos(slide_angle) * self.speed * 0.7
-                slide_dy = math.sin(slide_angle) * self.speed * 0.7
-                slide_x = self.x + slide_dx
-                slide_y = self.y + slide_dy
-                
-                if not self._check_collision(slide_x, slide_y, obstacles, other_zombies):
-                    self.x = slide_x
-                    self.y = slide_y
-                    break
+            if not self._check_collision(new_x, new_y, obstacles, other_zombies):
+                self.x, self.y = new_x, new_y
+                return True
+        
+        return False
+    
+    def _try_unstuck_movement(self, obstacles, other_zombies):
+        """Try random movement to get unstuck."""
+        for _ in range(8):  # Try 8 random directions
+            random_angle = random.uniform(0, 2 * math.pi)
+            dx = math.cos(random_angle) * self.speed * 0.5
+            dy = math.sin(random_angle) * self.speed * 0.5
+            new_x, new_y = self.x + dx, self.y + dy
+            
+            if not self._check_collision(new_x, new_y, obstacles, other_zombies):
+                self.x, self.y = new_x, new_y
+                return True
+        
+        return False
+    
+    def _update_stuck_detection(self, prev_x, prev_y, success):
+        """Update stuck detection counters."""
+        movement_distance = math.sqrt((self.x - prev_x)**2 + (self.y - prev_y)**2)
+        
+        if success and movement_distance > 0.1:  # Lowered threshold for better detection
+            self.stuck_counter = max(0, self.stuck_counter - 2)  # Reduce stuck counter on successful movement
+        else:
+            self.stuck_counter += 1
+        
+        # Cap the stuck counter to prevent it from growing too large
+        self.stuck_counter = min(self.stuck_counter, ZOMBIE_STUCK_THRESHOLD * 2)
+    
     
     def _check_collision(self, x, y, obstacles, other_zombies=None):
         """
@@ -153,12 +201,13 @@ class Zombie:
             if zombie_rect.colliderect(obstacle):
                 return True
         
-        # Check zombie-to-zombie collisions (optional anti-clustering)
+        # Check zombie-to-zombie collisions (reduced clustering)
         if other_zombies:
             for other in other_zombies:
                 if other != self:
                     distance = math.sqrt((x - other.x)**2 + (y - other.y)**2)
-                    if distance < (self.size + other.size) * 0.8:
+                    # Reduced collision radius and only apply when very close
+                    if distance < (self.size + other.size) * 0.6 and distance < 20:
                         return True
         
         return False
