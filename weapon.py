@@ -63,6 +63,8 @@ class WeaponPickup:
             self._draw_shotgun(screen, screen_x, screen_y)
         elif self.weapon_type == WeaponType.MACHINE_GUN:
             self._draw_machine_gun(screen, screen_x, screen_y)
+        elif self.weapon_type == WeaponType.GRENADE:
+            self._draw_grenade(screen, screen_x, screen_y)
     
     def _draw_shotgun(self, screen, x, y):
         """Draw shotgun sprite - longer barrel, wooden stock."""
@@ -109,3 +111,19 @@ class WeaponPickup:
         
         # Highlight to show it's pickupable
         pygame.draw.rect(screen, WHITE, (x - 18, y - 8, 30, 20), 2)
+    
+    def _draw_grenade(self, screen, x, y):
+        """Draw grenade sprite - dark green with pin."""
+        # Main grenade body
+        pygame.draw.circle(screen, (50, 100, 50), (int(x), int(y)), 8)
+        pygame.draw.circle(screen, (30, 80, 30), (int(x), int(y)), 8, 2)
+        
+        # Grenade segments/texture
+        pygame.draw.line(screen, (30, 80, 30), (x - 6, y), (x + 6, y), 1)
+        pygame.draw.line(screen, (30, 80, 30), (x, y - 6), (x, y + 6), 1)
+        
+        # Safety pin
+        pygame.draw.circle(screen, (200, 200, 200), (int(x + 6), int(y - 6)), 2)
+        
+        # Highlight to show it's pickupable
+        pygame.draw.rect(screen, WHITE, (x - 12, y - 12, 24, 24), 2)

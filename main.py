@@ -8,15 +8,20 @@ Controls:
 - WASD or Arrow Keys: Move player
 - Mouse: Aim weapon
 - Mouse Click: Shoot
-- R: Restart game (when game over)
+- 1, 2: Switch between weapons
+- Mouse Wheel: Switch weapons
+- R: Reload weapon / Restart game (when game over)
 
 Game Features:
-- Player with directional weapon display
+- Player with directional weapon display and 2-weapon inventory
 - Normal zombies (red) and fast zombies (orange)
-- Weapon upgrades: Pistol, Rifle, Shotgun
+- Weapon upgrades: Pistol (12 rounds), Shotgun (5 shells), Machine Gun (30 rounds), Grenades
+- Ammunition system with auto-reload: Pistol (2s reload), Machine Gun (3s reload), Shotgun (1s per shell, interruptible)
+- Grenade explosions with area damage (affects both zombies and player)
+- Weapon switching with keys 1/2 and mouse wheel
 - Procedurally generated obstacles
 - Smart zombie AI with pathfinding
-- Health system and collision detection
+- Health system and collision detections
 """
 import pygame
 from game import Game

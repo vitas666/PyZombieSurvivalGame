@@ -25,11 +25,13 @@ class WeaponType(Enum):
     PISTOL = 1
     SHOTGUN = 2
     MACHINE_GUN = 3
+    GRENADE = 4
 
 WEAPON_STATS = {
-    WeaponType.PISTOL: {"damage": 1, "cooldown": 300, "bullet_speed": 10},
-    WeaponType.SHOTGUN: {"damage": 3, "cooldown": 500, "bullet_speed": 8},
-    WeaponType.MACHINE_GUN: {"damage": 2, "cooldown": 100, "bullet_speed": 12}
+    WeaponType.PISTOL: {"damage": 1, "cooldown": 300, "bullet_speed": 10, "max_ammo": 12, "reload_time": 2000},
+    WeaponType.SHOTGUN: {"damage": 3, "cooldown": 500, "bullet_speed": 8, "max_ammo": 5, "reload_time": 1000},
+    WeaponType.MACHINE_GUN: {"damage": 2, "cooldown": 100, "bullet_speed": 12, "max_ammo": 30, "reload_time": 3000},
+    WeaponType.GRENADE: {"damage": 5, "cooldown": 1500, "bullet_speed": 6, "explosion_radius": 80, "max_ammo": float('inf'), "reload_time": 0}
 }
 
 # Game balance

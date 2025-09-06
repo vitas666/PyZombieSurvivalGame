@@ -5,7 +5,7 @@ import pygame
 import math
 import random
 from constants import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, MAP_SIZE, FPS, BLACK, BROWN, GREEN, WHITE, RED,
+    SCREEN_WIDTH, SCREEN_HEIGHT, MAP_SIZE, FPS, BLACK, BROWN, GREEN, WHITE, RED, YELLOW,
     WeaponType, ZOMBIE_MIN_SPAWN_DISTANCE
 )
 from player import Player
@@ -25,6 +25,7 @@ class Game:
         # Game objects
         self.player = Player(100, 100)
         self.bullets = []
+        self.grenades = []
         self.zombies = []
         self.obstacles = []
         self.weapon_pickups = []
@@ -96,7 +97,7 @@ class Game:
     
     def _spawn_weapon_pickups(self):
         """Spawn weapon pickups around the map."""
-        weapons = [WeaponType.MACHINE_GUN, WeaponType.SHOTGUN, WeaponType.MACHINE_GUN, WeaponType.SHOTGUN]
+        weapons = [WeaponType.MACHINE_GUN, WeaponType.SHOTGUN, WeaponType.GRENADE, WeaponType.MACHINE_GUN, WeaponType.GRENADE]
         
         for weapon in weapons:
             max_attempts = 50
@@ -145,9 +146,20 @@ class Game:
         
         self.player.weapon_angle = math.atan2(mouse_y - self.player.y, mouse_x - self.player.x)
         
+        # Weapon switching
+        if keys[pygame.K_1]:
+            self.player.switch_to_weapon_slot(0)
+        if keys[pygame.K_2]:
+            self.player.switch_to_weapon_slot(1)
+        
+        # Reload (only if not in game over state)
+        if keys[pygame.K_r] and self.game_state == "playing":
+            self.player.start_reload()
+        
         if pygame.mouse.get_pressed()[0]:
-            new_bullets = self.player.shoot(mouse_x, mouse_y)
+            new_bullets, new_grenades = self.player.shoot(mouse_x, mouse_y)
             self.bullets.extend(new_bullets)
+            self.grenades.extend(new_grenades)
     
     def update_game(self):
         """Update all game systems."""
@@ -160,9 +172,40 @@ class Game:
             if bullet.is_out_of_bounds():
                 self.bullets.remove(bullet)
         
+        # Update grenades
+        for grenade in self.grenades[:]:
+            grenade.update()
+            
+            # Check grenade collisions and explosions
+            if not grenade.exploded:
+                grenade.check_collision(self.zombies, self.obstacles)
+            
+            if grenade.exploded:
+                # Handle explosion damage
+                damaged_zombies, player_in_range = grenade.get_explosion_damage_targets(self.zombies, self.player)
+                
+                # Damage zombies in explosion radius
+                for zombie in damaged_zombies:
+                    if zombie.take_damage(grenade.damage):
+                        if zombie in self.zombies:
+                            self.zombies.remove(zombie)
+                
+                # Damage player if in explosion radius
+                if player_in_range:
+                    if self.player.take_damage():
+                        self.game_state = "lost"
+                        return
+            
+            # Remove finished grenades
+            if grenade.is_finished() or grenade.is_out_of_bounds():
+                self.grenades.remove(grenade)
+        
         # Update zombies
         for zombie in self.zombies:
             zombie.update(self.player.x, self.player.y, self.obstacles, self.zombies)
+        
+        # Update player reload
+        self.player.update_reload()
         
         # Handle bullet-zombie collisions
         for bullet in self.bullets[:]:
@@ -236,6 +279,10 @@ class Game:
         for bullet in self.bullets:
             bullet.draw(self.screen, self.camera_x, self.camera_y)
         
+        # Draw grenades
+        for grenade in self.grenades:
+            grenade.draw(self.screen, self.camera_x, self.camera_y)
+        
         # Draw player
         self.player.draw(self.screen, self.camera_x, self.camera_y)
         
@@ -250,12 +297,44 @@ class Game:
         
         # Game stats
         health_text = font.render(f"Health: {self.player.health}", True, WHITE)
-        weapon_text = font.render(f"Weapon: {self.player.weapon.name}", True, WHITE)
+        current_weapon = self.player.get_current_weapon()
+        weapon_name = current_weapon.name if current_weapon else "None"
+        weapon_text = font.render(f"Weapon: {weapon_name}", True, WHITE)
         zombies_text = font.render(f"Zombies: {len(self.zombies)}", True, WHITE)
+        
+        # Weapon inventory display
+        weapon1_name = self.player.weapons[0].name if self.player.weapons[0] else "Empty"
+        weapon2_name = self.player.weapons[1].name if self.player.weapons[1] else "Empty"
+        current_indicator1 = ">" if self.player.current_weapon_index == 0 else " "
+        current_indicator2 = ">" if self.player.current_weapon_index == 1 else " "
+        inventory_text = font.render(f"1{current_indicator1}{weapon1_name}  2{current_indicator2}{weapon2_name}", True, WHITE)
+        
+        # Ammunition display
+        current_weapon = self.player.get_current_weapon()
+        if current_weapon == WeaponType.GRENADE:
+            ammo_text = font.render(f"Grenades: {self.player.grenade_count}", True, WHITE)
+        else:
+            current_ammo = self.player.get_current_ammo()
+            max_ammo = self.player.get_max_ammo()
+            ammo_text = font.render(f"Ammo: {int(current_ammo)}/{int(max_ammo)}", True, WHITE)
+        
+        # Reload status
+        reload_text = None
+        if self.player.is_reloading:
+            if self.player.reload_weapon == WeaponType.SHOTGUN:
+                reload_text = font.render("RELOADING...", True, YELLOW)
+            else:
+                reload_text = font.render("RELOADING...", True, YELLOW)
         
         self.screen.blit(health_text, (10, 10))
         self.screen.blit(weapon_text, (10, 50))
-        self.screen.blit(zombies_text, (10, 90))
+        self.screen.blit(inventory_text, (10, 90))
+        self.screen.blit(ammo_text, (10, 130))
+        if reload_text:
+            self.screen.blit(reload_text, (10, 170))
+            self.screen.blit(zombies_text, (10, 210))
+        else:
+            self.screen.blit(zombies_text, (10, 170))
         
         # Game over screens
         if self.game_state == "won":
@@ -282,6 +361,12 @@ class Game:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r and self.game_state in ["won", "lost"]:
                         self.restart_game()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.game_state == "playing":
+                        if event.button == 4:  # Mouse wheel up
+                            self.player.switch_weapon(-1)
+                        elif event.button == 5:  # Mouse wheel down
+                            self.player.switch_weapon(1)
             
             # Update game
             if self.game_state == "playing":
