@@ -5,7 +5,7 @@ import pygame
 import math
 import random
 from constants import (
-    RED, WHITE, BLACK, ORANGE,
+    RED, WHITE, BLACK, ORANGE, YELLOW,
     ZOMBIE_SPEED, ZOMBIE_SIZE, ZOMBIE_HEALTH,
     FAST_ZOMBIE_SPEED, FAST_ZOMBIE_SIZE, FAST_ZOMBIE_HEALTH,
     ZOMBIE_STUCK_THRESHOLD, ZOMBIE_AVOIDANCE_DURATION
@@ -340,3 +340,109 @@ class FastZombie(Zombie):
         
         # Distinctive center dot
         pygame.draw.circle(screen, BLACK, (int(screen_x), int(screen_y)), 3)
+
+
+class ZombieBoss(Zombie):
+    """Zombie boss with high health, slow movement, and large size."""
+    
+    def __init__(self, x, y):
+        """
+        Initialize a zombie boss.
+        
+        Args:
+            x (float): Starting x position
+            y (float): Starting y position
+        """
+        super().__init__(x, y)
+        self.size = 35  # Larger than normal zombies
+        self.speed = 1.5  # Slower than normal zombies
+        self.health = 30  # Much higher health
+        self.max_health = 30
+        self.boss_pulse_time = 0
+    
+    def update(self, player_x, player_y, obstacles, other_zombies=None):
+        """Update zombie boss with special movement patterns."""
+        super().update(player_x, player_y, obstacles, other_zombies)
+        self.boss_pulse_time += 1
+    
+    def take_damage(self, damage):
+        """
+        Zombie boss takes damage with special resistance to insta-kill.
+        
+        Args:
+            damage (int): Amount of damage to take
+            
+        Returns:
+            bool: True if zombie boss died
+        """
+        # Boss takes double damage from insta-kill but doesn't die instantly
+        if damage >= 1000:  # Insta-kill damage
+            damage = damage // 500  # Reduced damage but still significant
+        
+        self.health -= damage
+        self.last_damage_time = pygame.time.get_ticks()
+        return self.health <= 0
+    
+    def draw(self, screen, camera_x, camera_y):
+        """
+        Draw the zombie boss with distinctive appearance.
+        
+        Args:
+            screen: Pygame screen surface
+            camera_x (float): Camera x offset
+            camera_y (float): Camera y offset
+        """
+        screen_x = self.x - camera_x
+        screen_y = self.y - camera_y
+        
+        # Pulsing effect for boss
+        pulse_intensity = int(abs(math.sin(self.boss_pulse_time * 0.05)) * 50)
+        
+        # Flash white when taking damage, otherwise dark red with pulsing
+        flash_time = pygame.time.get_ticks() - self.last_damage_time
+        if flash_time < 200:
+            color = WHITE
+        else:
+            color = (150 + pulse_intensity, 0, 0)  # Pulsing dark red
+            
+        pygame.draw.circle(screen, color, (int(screen_x), int(screen_y)), self.size)
+        
+        # Draw boss crown/spikes
+        for i in range(8):
+            angle = (i * math.pi * 2 / 8) + (self.boss_pulse_time * 0.01)
+            spike_x = screen_x + math.cos(angle) * (self.size + 8)
+            spike_y = screen_y + math.sin(angle) * (self.size + 8)
+            spike_end_x = screen_x + math.cos(angle) * (self.size + 15)
+            spike_end_y = screen_y + math.sin(angle) * (self.size + 15)
+            spike_color = WHITE if flash_time < 200 else YELLOW
+            pygame.draw.line(screen, spike_color, (spike_x, spike_y), (spike_end_x, spike_end_y), 3)
+        
+        # Draw hands pointing at player (larger for boss)
+        hand_length = 25
+        hand_offset = 0.2
+        
+        left_hand_angle = self.angle_to_player - hand_offset
+        right_hand_angle = self.angle_to_player + hand_offset
+        
+        left_hand_x = screen_x + math.cos(left_hand_angle) * hand_length
+        left_hand_y = screen_y + math.sin(left_hand_angle) * hand_length
+        right_hand_x = screen_x + math.cos(right_hand_angle) * hand_length
+        right_hand_y = screen_y + math.sin(right_hand_angle) * hand_length
+        
+        hand_color = WHITE if flash_time < 200 else BLACK
+        pygame.draw.line(screen, hand_color, (screen_x, screen_y), (left_hand_x, left_hand_y), 4)
+        pygame.draw.line(screen, hand_color, (screen_x, screen_y), (right_hand_x, right_hand_y), 4)
+        
+        # Draw health bar for boss
+        health_bar_width = 60
+        health_bar_height = 8
+        health_ratio = self.health / self.max_health
+        health_bar_x = screen_x - health_bar_width//2
+        health_bar_y = screen_y - self.size - 20
+        
+        # Background
+        pygame.draw.rect(screen, RED, (health_bar_x, health_bar_y, health_bar_width, health_bar_height))
+        # Current health
+        pygame.draw.rect(screen, YELLOW, (health_bar_x, health_bar_y, health_bar_width * health_ratio, health_bar_height))
+        # Border
+        pygame.draw.rect(screen, WHITE, (health_bar_x, health_bar_y, health_bar_width, health_bar_height), 2)

@@ -5,22 +5,23 @@ import pygame
 import math
 from constants import (
     BLUE, WHITE, RED, GREEN, PLAYER_SPEED, PLAYER_SIZE, PLAYER_MAX_HEALTH,
-    WeaponType, WEAPON_STATS
+    WeaponType, WEAPON_STATS, HeroType, HERO_STATS
 )
-from bullet import Bullet
+from bullet import Bullet, HomingBullet
 from grenade import Grenade
 
 
 class Player:
     """Represents the player character."""
     
-    def __init__(self, x, y):
+    def __init__(self, x, y, hero_type=HeroType.NATHAN):
         """
         Initialize the player.
         
         Args:
             x (float): Starting x position
             y (float): Starting y position
+            hero_type (HeroType): Selected hero type
         """
         self.x = x
         self.y = y
@@ -39,7 +40,8 @@ class Player:
             WeaponType.PISTOL: 12,  # 12 rounds
             WeaponType.SHOTGUN: 5,
             WeaponType.MACHINE_GUN: 30,
-            WeaponType.GRENADE: float('inf')  # Uses grenade_count instead
+            WeaponType.GRENADE: float('inf'),  # Uses grenade_count instead
+            WeaponType.MINIGUN: 200
         }
         
         # Reloading system
@@ -47,6 +49,28 @@ class Player:
         self.reload_start_time = 0
         self.reload_weapon = None
         self.shotgun_shells_reloaded = 0  # Track partial shotgun reload
+        
+        # Power-up system
+        self.insta_kill_active = False
+        self.insta_kill_end_time = 0
+        
+        # Scoring system
+        self.score = 0
+        self.kills_normal = 0
+        self.kills_fast = 0
+        self.kills_boss = 0
+        self.total_kills = 0
+        
+        # Skill streak system
+        self.kills_without_hit = 0
+        self.last_skill_bonus_at = 0  # Track last skill bonus milestone
+        
+        # Hero system
+        self.hero_type = hero_type
+        self.hero_color = HERO_STATS[hero_type]["color"]
+        self.ability_charge = 0  # 0-100%
+        self.ability_active = False
+        self.ability_end_time = 0
     
     def move(self, dx, dy, obstacles):
         """
@@ -130,6 +154,10 @@ class Player:
             speed = weapon_stats["bullet_speed"]
             damage = weapon_stats["damage"]
             
+            # Apply insta-kill power-up (massive damage)
+            if self.insta_kill_active:
+                damage = 1000
+            
             if current_weapon == WeaponType.GRENADE:
                 # Consume one grenade
                 self.grenade_count -= 1
@@ -139,12 +167,13 @@ class Player:
                 grenade = Grenade(self.x, self.y, speed, angle, damage, explosion_radius)
                 return [], [grenade]
             elif current_weapon == WeaponType.SHOTGUN:
-                # Consume ammo
-                self.ammo[current_weapon] -= 1
-                
-                # Auto-reload if ammo runs out
-                if self.ammo[current_weapon] <= 0:
-                    self.start_reload()
+                # Consume ammo (except Nathan during ability)
+                if not (self.hero_type == HeroType.NATHAN and self.ability_active):
+                    self.ammo[current_weapon] -= 1
+                    
+                    # Auto-reload if ammo runs out
+                    if self.ammo[current_weapon] <= 0:
+                        self.start_reload()
                 
                 # Shotgun fires multiple bullets in spread pattern
                 bullets = []
@@ -153,15 +182,23 @@ class Player:
                     bullets.append(Bullet(self.x, self.y, speed, spread_angle, damage))
                 return bullets, []
             else:
-                # Consume ammo for other weapons
+                # Consume ammo for other weapons (except Nathan during ability)
                 if self.ammo[current_weapon] != float('inf'):
-                    self.ammo[current_weapon] -= 1
-                    
-                    # Auto-reload if ammo runs out
-                    if self.ammo[current_weapon] <= 0:
-                        self.start_reload()
+                    # Nathan's ability = infinite ammo (no consumption)
+                    if not (self.hero_type == HeroType.NATHAN and self.ability_active):
+                        self.ammo[current_weapon] -= 1
+                        
+                        # Auto-reload if ammo runs out
+                        if self.ammo[current_weapon] <= 0:
+                            self.start_reload()
                 
-                return [Bullet(self.x, self.y, speed, angle, damage)], []
+                # Create bullet (homing if Nathan's ability is active)
+                if self.hero_type == HeroType.NATHAN and self.ability_active:
+                    bullet = HomingBullet(self.x, self.y, speed, angle, damage)
+                else:
+                    bullet = Bullet(self.x, self.y, speed, angle, damage)
+                
+                return [bullet], []
         return [], []
     
     def take_damage(self):
@@ -172,6 +209,9 @@ class Player:
             bool: True if player died (health <= 0)
         """
         self.health -= 1
+        # Reset skill streak when hit
+        self.kills_without_hit = 0
+        self.last_skill_bonus_at = 0
         return self.health <= 0
     
     def get_current_weapon(self):
@@ -326,6 +366,98 @@ class Player:
                 self.ammo[self.reload_weapon] = max_ammo
                 self.is_reloading = False
     
+    def update_powerups(self):
+        """Update active power-ups."""
+        current_time = pygame.time.get_ticks()
+        
+        # Check if insta-kill power-up has expired
+        if self.insta_kill_active and current_time > self.insta_kill_end_time:
+            self.insta_kill_active = False
+        
+        # Check if hero ability has expired
+        if self.ability_active and current_time > self.ability_end_time:
+            self.ability_active = False
+            
+            # Nathan's ability ending: reload current weapon to full ammo
+            if self.hero_type == HeroType.NATHAN:
+                current_weapon = self.get_current_weapon()
+                if current_weapon and current_weapon in self.ammo:
+                    max_ammo = WEAPON_STATS[current_weapon]["max_ammo"]
+                    if max_ammo != float('inf'):
+                        self.ammo[current_weapon] = max_ammo
+                        # Clear any ongoing reload
+                        self._clear_reload_state()
+    
+    def activate_insta_kill(self, duration):
+        """
+        Activate insta-kill power-up.
+        
+        Args:
+            duration (int): Duration in milliseconds
+        """
+        current_time = pygame.time.get_ticks()
+        self.insta_kill_active = True
+        self.insta_kill_end_time = current_time + duration
+    
+    def activate_hero_ability(self):
+        """Activate hero-specific ability if charged."""
+        if self.ability_charge >= 100:
+            current_time = pygame.time.get_ticks()
+            
+            if self.hero_type == HeroType.NATHAN:
+                # Nathan: Homing bullets for 10 seconds
+                self.ability_active = True
+                self.ability_end_time = current_time + 10000
+            elif self.hero_type == HeroType.KELLY:
+                # Kelly: Restore health to full immediately
+                self.health = self.max_health
+            
+            # Reset charge after use
+            self.ability_charge = 0
+            return True
+        return False
+    
+    def add_kill(self, zombie_type):
+        """
+        Add a kill to the player's score and track kill streaks.
+        
+        Args:
+            zombie_type (str): Type of zombie killed ("normal", "fast", or "boss")
+        """
+        # Add to kill counts
+        if zombie_type == "normal":
+            self.kills_normal += 1
+            score_points = 100
+        elif zombie_type == "fast":
+            self.kills_fast += 1
+            score_points = 150
+        elif zombie_type == "boss":
+            self.kills_boss += 1
+            score_points = 1500
+        else:
+            score_points = 100  # Default
+        
+        self.total_kills += 1
+        self.kills_without_hit += 1
+        self.score += score_points
+        
+        # Charge hero ability (20% per kill if streak increases)
+        if self.ability_charge < 100:
+            self.ability_charge = min(100, self.ability_charge + 20)
+        
+        # Check for skill bonuses (every 10 kills without being hit)
+        skill_bonus_milestone = (self.kills_without_hit // 10) * 10
+        if (skill_bonus_milestone > self.last_skill_bonus_at and 
+            skill_bonus_milestone >= 10):
+            
+            skill_bonus = skill_bonus_milestone * 50  # 10 kills = 500, 20 kills = 1000, etc.
+            self.score += skill_bonus
+            self.last_skill_bonus_at = skill_bonus_milestone
+            
+            return skill_bonus  # Return bonus for UI notification
+        
+        return 0  # No bonus
+    
     def get_current_ammo(self):
         """Get current ammunition for active weapon."""
         current_weapon = self.get_current_weapon()
@@ -371,7 +503,7 @@ class Player:
         screen_y = self.y - camera_y
         
         # Draw player body
-        pygame.draw.circle(screen, BLUE, (int(screen_x), int(screen_y)), self.size)
+        pygame.draw.circle(screen, self.hero_color, (int(screen_x), int(screen_y)), self.size)
         
         # Draw weapon pointing towards mouse
         weapon_length = 25

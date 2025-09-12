@@ -65,6 +65,8 @@ class WeaponPickup:
             self._draw_machine_gun(screen, screen_x, screen_y)
         elif self.weapon_type == WeaponType.GRENADE:
             self._draw_grenade(screen, screen_x, screen_y)
+        elif self.weapon_type == WeaponType.MINIGUN:
+            self._draw_minigun(screen, screen_x, screen_y)
     
     def _draw_shotgun(self, screen, x, y):
         """Draw shotgun sprite - longer barrel, wooden stock."""
@@ -127,3 +129,30 @@ class WeaponPickup:
         
         # Highlight to show it's pickupable
         pygame.draw.rect(screen, WHITE, (x - 12, y - 12, 24, 24), 2)
+    
+    def _draw_minigun(self, screen, x, y):
+        """Draw minigun sprite - rotating barrels, massive size."""
+        # Multiple rotating barrels
+        for i in range(6):
+            angle = (i * 60) * (3.14159 / 180)
+            barrel_x = x + 3 * math.cos(angle)
+            barrel_y = y + 3 * math.sin(angle)
+            pygame.draw.circle(screen, BLACK, (int(barrel_x), int(barrel_y)), 2)
+        
+        # Central hub
+        pygame.draw.circle(screen, GRAY, (int(x), int(y)), 4)
+        
+        # Heavy stock/body
+        body_rect = pygame.Rect(x - 20, y - 4, 15, 8)
+        pygame.draw.rect(screen, BLACK, body_rect)
+        
+        # Ammo belt/feed
+        pygame.draw.circle(screen, (150, 150, 0), (int(x - 15), int(y + 8)), 6)
+        pygame.draw.circle(screen, BLACK, (int(x - 15), int(y + 8)), 6, 1)
+        
+        # Support handles
+        pygame.draw.line(screen, GRAY, (x - 12, y - 8), (x - 12, y - 12), 3)
+        pygame.draw.line(screen, GRAY, (x + 5, y - 8), (x + 5, y - 12), 3)
+        
+        # Highlight to show it's pickupable  
+        pygame.draw.rect(screen, WHITE, (x - 25, y - 15, 50, 30), 2)

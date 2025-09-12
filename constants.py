@@ -19,6 +19,7 @@ GRAY = (128, 128, 128)
 BROWN = (139, 69, 19)
 YELLOW = (255, 255, 0)
 ORANGE = (255, 165, 0)
+PURPLE = (128, 0, 128)
 
 # Weapon configuration
 class WeaponType(Enum):
@@ -26,12 +27,24 @@ class WeaponType(Enum):
     SHOTGUN = 2
     MACHINE_GUN = 3
     GRENADE = 4
+    MINIGUN = 5
 
 WEAPON_STATS = {
-    WeaponType.PISTOL: {"damage": 1, "cooldown": 300, "bullet_speed": 10, "max_ammo": 12, "reload_time": 2000},
-    WeaponType.SHOTGUN: {"damage": 3, "cooldown": 500, "bullet_speed": 8, "max_ammo": 5, "reload_time": 1000},
-    WeaponType.MACHINE_GUN: {"damage": 2, "cooldown": 100, "bullet_speed": 12, "max_ammo": 30, "reload_time": 3000},
-    WeaponType.GRENADE: {"damage": 5, "cooldown": 1500, "bullet_speed": 6, "explosion_radius": 80, "max_ammo": float('inf'), "reload_time": 0}
+    WeaponType.PISTOL: {"damage": 1, "cooldown": 300, "bullet_speed": 10, "max_ammo": 12, "reload_time": 2000, "name": "Pistol"},
+    WeaponType.SHOTGUN: {"damage": 3, "cooldown": 500, "bullet_speed": 8, "max_ammo": 5, "reload_time": 1000, "name": "Shotgun"},
+    WeaponType.MACHINE_GUN: {"damage": 2, "cooldown": 100, "bullet_speed": 12, "max_ammo": 30, "reload_time": 3000, "name": "Machine Gun"},
+    WeaponType.GRENADE: {"damage": 5, "cooldown": 1500, "bullet_speed": 6, "explosion_radius": 80, "max_ammo": float('inf'), "reload_time": 0, "name": "Grenade"},
+    WeaponType.MINIGUN: {"damage": 4, "cooldown": 50, "bullet_speed": 15, "max_ammo": 200, "reload_time": 5000, "name": "Minigun"}
+}
+
+# Hero configuration
+class HeroType(Enum):
+    NATHAN = 1
+    KELLY = 2
+
+HERO_STATS = {
+    HeroType.NATHAN: {"name": "Nathan", "color": BLUE, "ability": "Infinite Ammo + Homing"},
+    HeroType.KELLY: {"name": "Kelly", "color": PURPLE, "ability": "Health Restore"}
 }
 
 # Game balance
